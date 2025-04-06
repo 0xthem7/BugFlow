@@ -1,3 +1,3 @@
 ### Vulnerabilities
 
-- [SSRF](./ssrf.md): Detailed analysis of Server-Side Request Forgery vulnerabilities.
+- [SSRF](./ssrf/README.md): Detailed analysis of Server-Side Request Forgery vulnerabilities.
