@@ -21,8 +21,8 @@ https://dphoeniixx.medium.com/vimeo-upload-function-ssrf-7466d8630437
     - Able to get compute enging API access 
   
 
-Official write up author [Twitter | dPhoeniixx](https://x.com/dPhoeniixx)
-[Medium | vimeo upload function ssrf](https://dphoeniixx.medium.com/vimeo-upload-function-ssrf-7466d8630437)
+Official write up author [Twitter \| dPhoeniixx](https://x.com/dPhoeniixx)
+[Medium \| vimeo upload function ssrf](https://dphoeniixx.medium.com/vimeo-upload-function-ssrf-7466d8630437)
 
 
 
