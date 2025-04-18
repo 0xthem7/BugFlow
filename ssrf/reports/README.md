@@ -10,3 +10,7 @@
 8. SSRF leaking internal google cloud data through upload function [549882](./549882)
 9. Full read SSRF in www.evernote.com that can leak aws metadata and local file inclusion [1189367](./1189367)
 10. SSRF in graphQL query (pwapi.ex2b.com) [1864188](./1864188)
+11. SSRF on duckduckgo.com/iu/ [398641](./398641)
+12. Unauthenticated blind SSRF in OAuth Jira authorization controller [398799](./398799)
+13. SSRF in webhooks leads to AWS private keys disclosure [508459](./508459)
+14. Full Read SSRF on Gitlab’s Internal Grafana [878779](./878779)
