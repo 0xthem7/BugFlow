@@ -240,7 +240,6 @@ And under the collaborator we could find the username which eventually solved th
 # Prevention 
 
 1. Never use the os command you can find some alternative or you can use sandbox 
-
 2. User strong input validation 
 3. Validating sytax, characters,  or whitespaces.
 
