@@ -135,7 +135,18 @@ Although these components are deployed for different purposes, fundamentally, th
 
 ## Connection state attacks
 
+For performance reasons, many websites reuse connections for multiple request/response cycles with the same client. Poorly implemented HTTP servers sometimes work on the dangerous assumption that certain properties
 
+For performance reasons, many websites reuse connections for multiple request/response cycles with the same client. Poorly implemented HTTP servers sometimes work on the dangerous assumption that certain properties, such as the Host header, are identical for all HTTP/1.1 requests sent over the same connection. This may be true of requests sent by a browser, but isn't necessarily the case for a sequence of requests sent from Burp Repeater. This can lead to a number of potential issues
+
+## SSRF via a malformed request line
+
+Custom proxies sometimes fail to validate the request line properly, which can allow you to supply unusual, malformed input with unfortunate results.
+For example, a reverse proxy might take the path from the request line, prefix it with http://backend-server, and route the request to that upstream URL. This works fine if the path starts with a / character, but what if starts with an @ character instead
+
+```
+GET @private-intranet/example HTTP/1.1
+```
 
 # Labs 
 
@@ -206,3 +217,5 @@ Now delete the carlos and solve the lab.
 4. Now create a group and add two request one with normal get request another the malicious 
 5. You can now iniatiate attack, Additionally keep the connection alive as well. it can be done through the connection header
 6. Checking the source code we can initate a deletion of the carlos account and eventually remove the account.
+
+
