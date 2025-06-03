@@ -133,6 +133,9 @@ Although these components are deployed for different purposes, fundamentally, th
 
 
 
+## Connection state attacks
+
+
 
 # Labs 
 
@@ -182,3 +185,24 @@ Now delete the carlos and solve the lab.
 
 ## Lab: SSRF via flawed request parsing 
 
+1. Access the page with absolute url 
+    ```
+    GET https://YOUR-LAB-ID.web-security-academy.net/
+    ```
+2. In the host field intrude the IP address 192.168.0.0/24
+3. Once you get the IP address use that as a host for furhter request
+4. Now access /admin with absolute url.
+5. Initate the deletion of carlos 
+6. Change the request method to GET 
+7. Change host 
+8. It worked.
+
+
+## Lab: Host validation bypass via connection state attack
+
+1. Send the Get request to  `/`
+2. Try to send to `/admin` with the host `192.168.0.1` 
+3. It just redirected
+4. Now create a group and add two request one with normal get request another the malicious 
+5. You can now iniatiate attack, Additionally keep the connection alive as well. it can be done through the connection header
+6. Checking the source code we can initate a deletion of the carlos account and eventually remove the account.
